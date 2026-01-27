@@ -9,4 +9,7 @@ optimizer_runs = 800
 via_ir = false
 ffi = true
 
+[fmt]
+bracket_spacing = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

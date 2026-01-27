@@ -29,12 +29,9 @@ interface IMintBurnERC20 {
 contract BondingCurveHook is BaseHook {
     using BalanceDeltaLibrary for BalanceDelta;
 
-    IMintBurnERC20 public immutable token;
-    bool public graduated;
+    mapping(address => bool) public graduated;
 
-    constructor(IPoolManager m, address t) BaseHook(m) {
-        token = IMintBurnERC20(t);
-    }
+    constructor(IPoolManager m) BaseHook(m) {}
 
     function getHookPermissions()
         public
@@ -65,9 +62,10 @@ contract BondingCurveHook is BaseHook {
         address,
         PoolKey calldata,
         ModifyLiquidityParams calldata,
-        bytes calldata
+        bytes calldata hookData
     ) internal view override returns (bytes4) {
-        require(graduated, "LP disabled until graduation");
+        (address tokenAddr, ) = abi.decode(hookData, (address, address));
+        require(graduated[tokenAddr], "LP disabled until graduation");
 
         return this.beforeAddLiquidity.selector;
     }
@@ -78,12 +76,19 @@ contract BondingCurveHook is BaseHook {
         SwapParams calldata params,
         bytes calldata hookData
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        require(!graduated, "ended");
+        (address tokenAddr, address user) = abi.decode(
+            hookData,
+            (address, address)
+        );
+        IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
 
-        address user = abi.decode(hookData, (address));
-
-        if (user == address(0))
+        if (graduated[tokenAddr]) {
             return (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+        }
+
+        if (user == address(0)) {
+            return (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+        }
 
         bool buy = params.amountSpecified < 0;
         uint256 amt = uint256(
@@ -115,10 +120,16 @@ contract BondingCurveHook is BaseHook {
         PoolKey calldata,
         SwapParams calldata,
         BalanceDelta,
-        bytes calldata
+        bytes calldata hookData
     ) internal override returns (bytes4, int128) {
-        if (!graduated && token.totalSupply() >= BondingCurveLib.SUPPLY_CAP) {
-            graduated = true;
+        (address tokenAddr, ) = abi.decode(hookData, (address, address));
+        IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
+
+        if (
+            !graduated[tokenAddr] &&
+            token.totalSupply() >= BondingCurveLib.SUPPLY_CAP
+        ) {
+            graduated[tokenAddr] = true;
         }
 
         return (this.afterSwap.selector, 0);
