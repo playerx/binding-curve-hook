@@ -91,10 +91,11 @@ contract BondingCurveHook is BaseHook {
         }
 
         bool buy = params.amountSpecified < 0;
+        uint256 s = token.totalSupply();
         uint256 amt = uint256(
             buy ? -params.amountSpecified : params.amountSpecified
         );
-        uint256 s = token.totalSupply();
+
         if (buy) {
             require(s + amt <= BondingCurveLib.SUPPLY_CAP, "cap");
             uint256 cost = BondingCurveLib.cost(s, amt);
