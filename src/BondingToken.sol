@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract BondingToken is ERC20 {
     address public admin;
@@ -9,11 +9,19 @@ contract BondingToken is ERC20 {
     error OnlyAdmin();
 
     modifier onlyAdmin() {
-        if (msg.sender != admin) revert OnlyAdmin();
+        _onlyAdmin();
         _;
     }
 
-    constructor(string memory name, string memory symbol, address _admin) ERC20(name, symbol) {
+    function _onlyAdmin() internal view {
+        if (msg.sender != admin) revert OnlyAdmin();
+    }
+
+    constructor(
+        string memory name,
+        string memory symbol,
+        address _admin
+    ) ERC20(name, symbol) {
         admin = _admin;
     }
 
