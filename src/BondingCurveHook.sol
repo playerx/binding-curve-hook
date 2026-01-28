@@ -24,6 +24,8 @@ interface IMintBurnERC20 {
     function mint(address, uint256) external;
     function burn(address, uint256) external;
     function totalSupply() external view returns (uint256);
+
+    function setAdmin(address) external;
 }
 
 contract BondingCurveHook is BaseHook {
@@ -90,7 +92,7 @@ contract BondingCurveHook is BaseHook {
             return (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        bool buy = params.amountSpecified < 0;
+        bool buy = params.zeroForOne; // params.amountSpecified < 0;
         uint256 s = token.totalSupply();
         uint256 amt = uint256(
             buy ? -params.amountSpecified : params.amountSpecified
@@ -131,6 +133,7 @@ contract BondingCurveHook is BaseHook {
             token.totalSupply() >= BondingCurveLib.SUPPLY_CAP
         ) {
             graduated[tokenAddr] = true;
+            token.setAdmin(address(0));
         }
 
         return (this.afterSwap.selector, 0);
