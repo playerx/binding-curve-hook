@@ -122,6 +122,8 @@ contract BondingCurveHook is BaseHook {
 
     // direct api
     function buy(address tokenAddr, uint256 amt, uint256 maxEthAmt) public payable returns (uint256) {
+        require(!graduated[tokenAddr], "Token already graduation, please use LP for swaps");
+
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
 
@@ -139,6 +141,8 @@ contract BondingCurveHook is BaseHook {
     }
 
     function sell(address tokenAddr, uint256 amt, uint256 minEthAmount) public returns (uint256) {
+        require(!graduated[tokenAddr], "Token already graduation, please use LP for swaps");
+
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
 
