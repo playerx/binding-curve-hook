@@ -5,9 +5,11 @@ import { BaseHook } from "v4-periphery/src/utils/BaseHook.sol";
 
 import { Hooks } from "v4-core/libraries/Hooks.sol";
 import { PoolKey } from "v4-core/types/PoolKey.sol";
+import { Currency } from "v4-core/types/Currency.sol";
 import { BalanceDelta, BalanceDeltaLibrary } from "v4-core/types/BalanceDelta.sol";
 import { BeforeSwapDelta, toBeforeSwapDelta } from "v4-core/types/BeforeSwapDelta.sol";
 import { IPoolManager } from "v4-core/interfaces/IPoolManager.sol";
+import { FullMath } from "v4-core/libraries/FullMath.sol";
 import { SwapParams, ModifyLiquidityParams } from "v4-core/types/PoolOperation.sol";
 import { BondingCurveLib } from "./BondingCurveLib.sol";
 
@@ -26,6 +28,9 @@ contract BondingCurveHook is BaseHook {
 
     constructor(IPoolManager m) BaseHook(m) { }
 
+    receive() external payable { }
+
+    // hook api
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
@@ -57,11 +62,13 @@ contract BondingCurveHook is BaseHook {
         return this.beforeAddLiquidity.selector;
     }
 
-    function _beforeSwap(address, PoolKey calldata, SwapParams calldata params, bytes calldata hookData)
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        require(Currency.unwrap(key.currency0) == address(0), "currency0 must be ETH");
+
         (address tokenAddr, address user) = abi.decode(hookData, (address, address));
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
 
@@ -76,12 +83,22 @@ contract BondingCurveHook is BaseHook {
         bool isBuy = params.zeroForOne;
         uint256 amt = uint256(params.amountSpecified);
 
+        // Repurpose sqrtPriceLimitX96 as slippage limit:
+        // - For buys: maxEthAmount (maximum ETH willing to spend)
+        // - For sells: minEthAmount (minimum ETH expected to receive)
+        //
+        // Convert sqrtPriceLimitX96 to plain amount:
+        //  sqrtPriceX96 = sqrt(price) * 2^96
+        //  price = sqrtPriceX96^2 / 2^192
+        uint256 sqrtPriceX96 = uint256(params.sqrtPriceLimitX96);
+        uint256 limitAmount = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 192);
+
         if (isBuy) {
-            uint256 cost = _buy(token, amt, 1000, user);
+            uint256 cost = _buy(token, amt, limitAmount, user);
 
             return (this.beforeSwap.selector, toBeforeSwapDelta(int128(int256(cost)), -int128(int256(amt))), 0);
         } else {
-            uint256 refund = _sell(token, amt, 0, user);
+            uint256 refund = _sell(token, amt, limitAmount, user);
 
             return (this.beforeSwap.selector, toBeforeSwapDelta(-int128(int256(refund)), int128(int256(amt))), 0);
         }
@@ -103,18 +120,34 @@ contract BondingCurveHook is BaseHook {
         return (this.afterSwap.selector, 0);
     }
 
-    function buy(address tokenAddr, uint256 amt, uint256 maxEthAmt) public returns (uint256) {
+    // direct api
+    function buy(address tokenAddr, uint256 amt, uint256 maxEthAmt) public payable returns (uint256) {
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
 
-        return _buy(token, amt, maxEthAmt, user);
+        uint256 ethToCharge = _buy(token, amt, maxEthAmt, user);
+
+        require(msg.value >= ethToCharge, "insufficient ETH");
+
+        uint256 ethToRefund = msg.value - ethToCharge;
+        if (ethToRefund > 0) {
+            (bool success,) = user.call{ value: ethToRefund }("");
+            require(success, "ETH refund failed");
+        }
+
+        return ethToCharge;
     }
 
-    function sell(IMintBurnERC20 tokenAddr, uint256 amt, uint256 minEthAmount) public returns (uint256) {
+    function sell(address tokenAddr, uint256 amt, uint256 minEthAmount) public returns (uint256) {
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
 
-        return _sell(token, amt, minEthAmount, user);
+        uint256 ethToRefund = _sell(token, amt, minEthAmount, user);
+
+        (bool success,) = user.call{ value: ethToRefund }("");
+        require(success, "ETH transfer failed");
+
+        return ethToRefund;
     }
 
     function _buy(IMintBurnERC20 token, uint256 amt, uint256 maxEthAmount, address user) internal returns (uint256) {
