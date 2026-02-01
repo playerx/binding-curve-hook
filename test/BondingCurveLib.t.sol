@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Test } from "forge-std/Test.sol";
-import { BondingCurveLib } from "../src/BondingCurveLib.sol";
+import {Test} from "forge-std/Test.sol";
+import {BondingCurveLib} from "../src/helpers/BondingCurveLib.sol";
 
 contract BondingCurveLibTest is Test {
     // Mirror constants for testing

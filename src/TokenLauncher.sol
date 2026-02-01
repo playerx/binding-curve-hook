@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { IHooks } from "v4-core/interfaces/IHooks.sol";
-import { BondingCurveLib } from "./BondingCurveLib.sol";
-import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
-import { UniswapV4Lib } from "./UniswapV4Lib.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {BondingCurveLib} from "./helpers/BondingCurveLib.sol";
+import {
+    IPositionManager
+} from "v4-periphery/src/interfaces/IPositionManager.sol";
+import {UniswapV4Lib} from "./helpers/UniswapV4Lib.sol";
 
 interface IMintBurnERC20 {
     function mint(address, uint256) external;
@@ -12,7 +14,7 @@ interface IMintBurnERC20 {
     function totalSupply() external view returns (uint256);
 
     function approve(address addr, uint256 amount) external;
-    function setAdmin(address) external;
+    function renounceOwnership() external;
 }
 
 contract TokenLauncher {
@@ -32,11 +34,18 @@ contract TokenLauncher {
         hook = IHooks(hookAddr);
     }
 
-    receive() external payable { }
+    receive() external payable {}
 
     // public api
-    function buy(address tokenAddr, uint256 amt, uint256 maxEthAmt) public payable returns (uint256) {
-        require(!graduated[tokenAddr], "Token already graduation, please use LP for swaps");
+    function buy(
+        address tokenAddr,
+        uint256 amt,
+        uint256 maxEthAmt
+    ) public payable returns (uint256) {
+        require(
+            !graduated[tokenAddr],
+            "Token already graduation, please use LP for swaps"
+        );
 
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
@@ -55,7 +64,7 @@ contract TokenLauncher {
 
         uint256 ethToRefund = msg.value - ethToCharge;
         if (ethToRefund > 0) {
-            (bool success,) = user.call{ value: ethToRefund }("");
+            (bool success, ) = user.call{value: ethToRefund}("");
             require(success, "ETH refund failed");
         }
 
@@ -66,8 +75,15 @@ contract TokenLauncher {
         return ethToCharge;
     }
 
-    function sell(address tokenAddr, uint256 amt, uint256 minEthAmount) public returns (uint256) {
-        require(!graduated[tokenAddr], "Token already graduation, please use LP for swaps");
+    function sell(
+        address tokenAddr,
+        uint256 amt,
+        uint256 minEthAmount
+    ) public returns (uint256) {
+        require(
+            !graduated[tokenAddr],
+            "Token already graduation, please use LP for swaps"
+        );
 
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
         address user = msg.sender;
@@ -82,13 +98,13 @@ contract TokenLauncher {
 
         ethReserves[tokenAddr] -= refund;
 
-        (bool success,) = user.call{ value: refund }("");
+        (bool success, ) = user.call{value: refund}("");
         require(success, "ETH transfer failed");
 
         return refund;
     }
 
-    function swap() public { }
+    function swap() public {}
 
     // helpers
     function _graduate(address tokenAddr) internal returns (uint256 ethAmount) {
@@ -103,14 +119,17 @@ contract TokenLauncher {
         // At graduation: virtual token reserve = 600M, virtual ETH reserve = 40 ETH
         // Price = 40 ETH / 600M tokens
         // For the ETH we have, mint proportional tokens
-        uint256 tokensForLP = (ethAmount * BondingCurveLib.VIRTUAL_TOKEN_RESERVE)
-            / (BondingCurveLib.K / (BondingCurveLib.VIRTUAL_TOKEN_RESERVE - BondingCurveLib.SUPPLY_CAP));
+        uint256 tokensForLp = (ethAmount *
+            BondingCurveLib.VIRTUAL_TOKEN_RESERVE) /
+            (BondingCurveLib.K /
+                (BondingCurveLib.VIRTUAL_TOKEN_RESERVE -
+                    BondingCurveLib.SUPPLY_CAP));
 
         // Mint tokens for LP
-        token.mint(address(this), tokensForLP);
+        token.mint(address(this), tokensForLp);
 
         // Approve position manager to spend tokens
-        token.approve(address(positionManager), tokensForLP);
+        token.approve(address(positionManager), tokensForLp);
 
         // Create LP position using UniswapV4Lib
         uint256 tokenId = UniswapV4Lib.createLP(
@@ -119,7 +138,7 @@ contract TokenLauncher {
                 hook: hook,
                 tokenAddr: tokenAddr,
                 ethAmount: ethAmount,
-                tokenAmount: tokensForLP,
+                tokenAmount: tokensForLp,
                 fee: LP_FEE,
                 tickSpacing: TICK_SPACING,
                 owner: address(this)
@@ -127,7 +146,7 @@ contract TokenLauncher {
         );
 
         // Renounce admin after LP creation
-        token.setAdmin(address(0));
+        token.renounceOwnership();
 
         emit Graduated(tokenAddr, ethAmount, tokenId);
     }
