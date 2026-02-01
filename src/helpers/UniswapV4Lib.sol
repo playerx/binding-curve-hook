@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {Currency} from "v4-core/types/Currency.sol";
-import {
-    IPositionManager
-} from "v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "v4-periphery/src/libraries/Actions.sol";
-import {
-    LiquidityAmounts
-} from "v4-periphery/src/libraries/LiquidityAmounts.sol";
+import { IHooks } from "v4-core/interfaces/IHooks.sol";
+import { TickMath } from "v4-core/libraries/TickMath.sol";
+import { PoolKey } from "v4-core/types/PoolKey.sol";
+import { Currency } from "v4-core/types/Currency.sol";
+import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
+import { Actions } from "v4-periphery/src/libraries/Actions.sol";
+import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 /// @title UniswapV4Lib
 /// @notice Library for creating Uniswap V4 liquidity positions
@@ -31,26 +27,13 @@ library UniswapV4Lib {
     /// @notice Creates a Uniswap V4 liquidity position with ETH and a token
     /// @param params The parameters for creating the LP position
     /// @return tokenId The NFT token ID of the created position
-    function createLP(
-        CreateLPParams memory params
-    ) internal returns (uint256 tokenId) {
-        PoolKey memory key = _buildPoolKey(
-            params.tokenAddr,
-            params.hook,
-            params.fee,
-            params.tickSpacing
-        );
+    function createLP(CreateLPParams memory params) internal returns (uint256 tokenId) {
+        PoolKey memory key = _buildPoolKey(params.tokenAddr, params.hook, params.fee, params.tickSpacing);
 
-        uint160 sqrtPriceX96 = _calculateSqrtPriceX96(
-            params.ethAmount,
-            params.tokenAmount
-        );
+        uint160 sqrtPriceX96 = _calculateSqrtPriceX96(params.ethAmount, params.tokenAmount);
 
         // Initialize the pool
-        int24 currentTick = params.positionManager.initializePool(
-            key,
-            sqrtPriceX96
-        );
+        int24 currentTick = params.positionManager.initializePool(key, sqrtPriceX96);
         require(currentTick != type(int24).max, "Pool initialization failed");
 
         // Get next token ID before minting
@@ -69,20 +52,18 @@ library UniswapV4Lib {
         );
     }
 
-    function _buildPoolKey(
-        address tokenAddr,
-        IHooks hook,
-        uint24 fee,
-        int24 tickSpacing
-    ) private pure returns (PoolKey memory) {
-        return
-            PoolKey({
-                currency0: Currency.wrap(address(0)), // ETH
-                currency1: Currency.wrap(tokenAddr),
-                fee: fee,
-                tickSpacing: tickSpacing,
-                hooks: hook
-            });
+    function _buildPoolKey(address tokenAddr, IHooks hook, uint24 fee, int24 tickSpacing)
+        private
+        pure
+        returns (PoolKey memory)
+    {
+        return PoolKey({
+            currency0: Currency.wrap(address(0)), // ETH
+            currency1: Currency.wrap(tokenAddr),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: hook
+        });
     }
 
     function _executeMint(
@@ -109,20 +90,9 @@ library UniswapV4Lib {
             tokenAmount
         );
 
-        bytes memory unlockData = _buildMintParams(
-            key,
-            tickLower,
-            tickUpper,
-            liquidity,
-            ethAmount,
-            tokenAmount,
-            owner
-        );
+        bytes memory unlockData = _buildMintParams(key, tickLower, tickUpper, liquidity, ethAmount, tokenAmount, owner);
 
-        positionManager.modifyLiquidities{value: ethAmount}(
-            unlockData,
-            block.timestamp
-        );
+        positionManager.modifyLiquidities{ value: ethAmount }(unlockData, block.timestamp);
     }
 
     function _buildMintParams(
@@ -134,10 +104,7 @@ library UniswapV4Lib {
         uint256 tokenAmount,
         address owner
     ) private pure returns (bytes memory) {
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.MINT_POSITION),
-            uint8(Actions.SETTLE_PAIR)
-        );
+        bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
 
         bytes[] memory params = new bytes[](2);
 
@@ -149,16 +116,8 @@ library UniswapV4Lib {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint128 tokenAmountMax = uint128(tokenAmount);
 
-        params[0] = abi.encode(
-            key,
-            tickLower,
-            tickUpper,
-            uint256(liquidity),
-            ethAmountMax,
-            tokenAmountMax,
-            owner,
-            bytes("")
-        );
+        params[0] =
+            abi.encode(key, tickLower, tickUpper, uint256(liquidity), ethAmountMax, tokenAmountMax, owner, bytes(""));
 
         params[1] = abi.encode(key.currency0, key.currency1);
 
@@ -167,10 +126,7 @@ library UniswapV4Lib {
 
     /// @notice Calculate sqrtPriceX96 from ETH and token amounts
     /// @dev sqrtPriceX96 = sqrt(token/eth) * 2^96 for currency0=ETH, currency1=token
-    function _calculateSqrtPriceX96(
-        uint256 ethAmount,
-        uint256 tokenAmount
-    ) private pure returns (uint160) {
+    function _calculateSqrtPriceX96(uint256 ethAmount, uint256 tokenAmount) private pure returns (uint160) {
         // price = token/eth (how many tokens per ETH)
         // sqrtPrice = sqrt(token/eth)
         // sqrtPriceX96 = sqrtPrice * 2^96
