@@ -96,7 +96,9 @@ library UniswapV4Lib {
         address owner
     ) private {
         // Calculate tick range (wide range around current tick, aligned to spacing)
+        // forge-lint: disable-next-line(divide-before-multiply)
         int24 tickLower = ((currentTick - 6000) / tickSpacing) * tickSpacing;
+        // forge-lint: disable-next-line(divide-before-multiply)
         int24 tickUpper = ((currentTick + 6000) / tickSpacing) * tickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -139,13 +141,21 @@ library UniswapV4Lib {
 
         bytes[] memory params = new bytes[](2);
 
+        require(ethAmount <= type(uint128).max, "ethAmount overflow");
+        require(tokenAmount <= type(uint128).max, "tokenAmount overflow");
+        // casting to uint128 is safe because of the require checks above
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint128 ethAmountMax = uint128(ethAmount);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint128 tokenAmountMax = uint128(tokenAmount);
+
         params[0] = abi.encode(
             key,
             tickLower,
             tickUpper,
             uint256(liquidity),
-            uint128(ethAmount),
-            uint128(tokenAmount),
+            ethAmountMax,
+            tokenAmountMax,
             owner,
             bytes("")
         );
@@ -171,6 +181,9 @@ library UniswapV4Lib {
         uint256 ratioX192 = (tokenAmount << 192) / ethAmount;
         uint256 sqrtRatioX96 = _sqrt(ratioX192);
 
+        require(sqrtRatioX96 <= type(uint160).max, "sqrtRatioX96 overflow");
+        // casting to uint160 is safe because of the require check above
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint160(sqrtRatioX96);
     }
 
