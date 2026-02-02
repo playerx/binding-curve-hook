@@ -21,7 +21,7 @@ library UniswapV4Lib {
         uint256 tokenAmount;
         uint24 fee;
         int24 tickSpacing;
-        address owner;
+        address owner; // Contract address to lock LP (contracts have no private key)
     }
 
     /// @notice Creates a Uniswap V4 liquidity position with ETH and a token
@@ -39,11 +39,10 @@ library UniswapV4Lib {
         // Get next token ID before minting
         tokenId = params.positionManager.nextTokenId();
 
-        // Build and execute mint
+        // Build and execute mint (LP token sent to recipient - use contract address to lock)
         _executeMint(
             params.positionManager,
             key,
-            currentTick,
             sqrtPriceX96,
             params.ethAmount,
             params.tokenAmount,
@@ -69,18 +68,17 @@ library UniswapV4Lib {
     function _executeMint(
         IPositionManager positionManager,
         PoolKey memory key,
-        int24 currentTick,
         uint160 sqrtPriceX96,
         uint256 ethAmount,
         uint256 tokenAmount,
         int24 tickSpacing,
         address owner
     ) private {
-        // Calculate tick range (wide range around current tick, aligned to spacing)
+        // Full range liquidity (like Uniswap V2), aligned to tick spacing
         // forge-lint: disable-next-line(divide-before-multiply)
-        int24 tickLower = ((currentTick - 6000) / tickSpacing) * tickSpacing;
+        int24 tickLower = (TickMath.MIN_TICK / tickSpacing) * tickSpacing;
         // forge-lint: disable-next-line(divide-before-multiply)
-        int24 tickUpper = ((currentTick + 6000) / tickSpacing) * tickSpacing;
+        int24 tickUpper = (TickMath.MAX_TICK / tickSpacing) * tickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,

@@ -17,13 +17,13 @@ interface IMintBurnERC20 {
     function renounceOwnership() external;
 }
 
-contract TokenLauncher is ReentrancyGuard {
-    enum TokenStatus {
-        None, // 0 - default/uninitialized
-        Registered, // 1
-        Graduated // 2
-    }
+enum TokenStatus {
+    None, // 0 - default/uninitialized
+    Registered, // 1
+    Graduated // 2
+}
 
+contract TokenLauncher is ReentrancyGuard {
     event TokenCreated(address indexed token);
     event TokenGraduated(address indexed token, uint256 ethAmount, uint256 tokenId);
 
@@ -31,12 +31,14 @@ contract TokenLauncher is ReentrancyGuard {
     int24 public constant TICK_SPACING = 60;
 
     IPositionManager public positionManager;
+    IHooks public hook;
 
     mapping(address => TokenStatus) public tokenStatus;
     mapping(address => uint256) public ethReserves;
 
-    constructor(address positionManagerAddr) {
+    constructor(address positionManagerAddr, address hookAddr) {
         positionManager = IPositionManager(positionManagerAddr);
+        hook = IHooks(hookAddr);
     }
 
     receive() external payable { }
@@ -51,7 +53,7 @@ contract TokenLauncher is ReentrancyGuard {
         emit TokenCreated(tokenAddr);
     }
 
-    function buy(address tokenAddr, uint256 amt, uint256 maxEthAmt) public payable nonReentrant returns (uint256) {
+    function buy(address tokenAddr, uint256 amt, uint256 minEthAmount) public payable nonReentrant returns (uint256) {
         require(tokenStatus[tokenAddr] == TokenStatus.Registered, "Token not registered or already graduated");
 
         IMintBurnERC20 token = IMintBurnERC20(tokenAddr);
@@ -61,7 +63,7 @@ contract TokenLauncher is ReentrancyGuard {
 
         uint256 ethToCharge = BondingCurveLib.cost(supply, amt);
 
-        require(ethToCharge <= maxEthAmt, "slippage");
+        require(ethToCharge <= minEthAmount, "slippage");
 
         token.mint(user, amt);
 
@@ -126,11 +128,11 @@ contract TokenLauncher is ReentrancyGuard {
         // Approve position manager to spend tokens
         token.approve(address(positionManager), tokensForLp);
 
-        // Create LP position using UniswapV4Lib
+        // Create LP position using UniswapV4Lib (LP token locked in this contract - no transfer functions)
         uint256 tokenId = UniswapV4Lib.createLP(
             UniswapV4Lib.CreateLPParams({
                 positionManager: positionManager,
-                hook: IHooks(address(0)),
+                hook: hook,
                 tokenAddr: tokenAddr,
                 ethAmount: ethAmount,
                 tokenAmount: tokensForLp,
